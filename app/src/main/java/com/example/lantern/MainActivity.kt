@@ -1,6 +1,7 @@
 package com.example.lantern
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
@@ -23,13 +24,31 @@ import com.android.volley.toolbox.Volley
 import com.google.android.gms.location.*
 import com.google.android.material.floatingactionbutton.FloatingActionButton
 import com.google.android.gms.location.LocationResult
-
 import com.google.android.gms.location.LocationCallback
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
+import java.security.MessageDigest
 import java.security.SecureRandom
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
 
+private const val PACKET_LENGTH = 32 // bytes
+
+// todo -- test
+private fun isLittleEndian(): Boolean {
+    // apparently we can't trust ByteOrder.nativeOrder() ??
+    val i: UInt = 1u // has to be int to do bit manipulation
+    // i hate java
+    // big-endian: 00000000 00000000 00000000 00000001
+    // lit-endian: 00000001 00000000 00000000 00000000
+    return (i shr 1) > 0u
+}
 
 class MainActivity : AppCompatActivity(), View.OnClickListener {
 
@@ -40,15 +59,58 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private lateinit var locReq: LocationRequest
     private lateinit var locCall: LocationCallback
     private lateinit var stopwatch: Chronometer
+    private var startTime: Long = 0
+    private var startTimeNano: Long = 0
 
     private var api: java.net.URL? = null
     private var udp: DatagramSocket? = null
+    private var port: Int = 0
+    private var addr: InetAddress? = null
     private var key: String? = null
+    private var kar: ByteArray? = null
     private var end: String? = null
 
+    private val scope = CoroutineScope(Job() + Dispatchers.IO) // off Main thread pls
+
+    private fun latlonToBytes(_l: Double, b: Array<Byte>) {
+//        var r: Long = 0
+//        var l = _l
+//        if (l < 0) {
+//            r = 1
+//            l *= -1
+//        }
+//        r = (r shl 10) or l.toLong()
+//        l = (l-l.toInt()) * 100000
+//        r = (r shl 17) or l.toLong()
+//        for (i in 0..3) b[i] = (r shr (3-i)*8).toByte()
+
+        val l = _l.toFloat().toBits()
+        for (i in 0..3) b[i] = (l shr (3-i)*8).toByte()
+    }
+
+    @SuppressLint("GetInstance") // our case of ECB is safe
     private fun transmitPacket(loc: Location) {
         if (udp != null) {
             Log.d("hi", loc.toString())
+            val b = ByteArray(PACKET_LENGTH)
+            val p = Array<Byte>(4) { 0 } // insane syntax lmao
+            latlonToBytes(loc.latitude, p)
+            for (i in 0..3) b[i] = p[i]
+            latlonToBytes(loc.longitude, p)
+            for (i in 0..3) b[i+4] = p[i]
+            // verify size of Long ?
+            var t = startTime + (loc.elapsedRealtimeNanos - startTimeNano)/1000
+            if (isLittleEndian()) {
+                t = java.lang.Long.reverseBytes(t)
+                Log.e("hi", "reversed bytes")
+            }
+            for (i in 0..7) b[i+8] = (t shr (7-i)*8).toByte()
+            // for (i in 0..7) Log.d("byte", Integer.toBinaryString(b[i].toInt() and 0xff))
+            val d = MessageDigest.getInstance("MD5").digest(b.sliceArray(0..15))
+            for (i in 0..15) b[i+16] = d[i]
+            val c = Cipher.getInstance("AES/ECB/NoPadding") // it's safe enough
+            c.init(Cipher.ENCRYPT_MODE, SecretKeySpec(kar, "AES")) // todo
+            udp!!.send(DatagramPacket(c.doFinal(b), PACKET_LENGTH, addr, port))
         }
     }
 
@@ -116,8 +178,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         // grab all location changes, encrypt, and stream to server
         // -- UDP packet description from server README
 
+        // FOR LOCAL TESTING,
+        // localhost == 10.0.2.2
+        // (https://stackoverflow.com/questions/38668820/how-to-connect-to-a-local-server-from-an-android-emulator)
+
         // make sure we have location
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             // TODO: Consider calling
             //    ActivityCompat#requestPermissions
@@ -128,16 +193,17 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             // for ActivityCompat#requestPermissions for more details.
             return // startSessionMiddleware(view)
         }
+        // make sure we have internet
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) {
+            // todo (same)
+            return
+        }
         // generate session key
         val b = ByteArray(32)
         SecureRandom().nextBytes(b)
         key = b.joinToString(separator = "") { eachByte -> "%02x".format(eachByte) }
-
+        kar = b
         // api request
-        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.INTERNET) != PackageManager.PERMISSION_GRANTED) {
-            // todo
-            return
-        }
         val sp = PreferenceManager.getDefaultSharedPreferences(this) // shouldn't be null
         api = java.net.URL(
             (if (sp.getBoolean("useHTTPS",true)) "https" else "http") + "://" + sp.getString("apiURL", "localhost:420")
@@ -151,78 +217,71 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 { response ->
                     Log.d("hi", response.toString())
                     // save UDP address
-                    if (api == null) {
-                        return@JsonObjectRequest
+                    udp = DatagramSocket()
+                    end = response["token"] as String
+                    port = response["port"] as Int
+                    addr = InetAddress.getByName(api!!.host)
+                    // fetch last location
+                    fusedLocationClient.lastLocation.addOnSuccessListener { location : Location? ->
+                        Log.d("loc", location.toString())
+                        if (location != null) {
+                            startTime = location.time
+                            startTimeNano = location.elapsedRealtimeNanos
+                            // transmitPacket(location)
+                            findViewById<TextView>(R.id.locationAccuracyUpdate).text = location.accuracy.toString()
+                        } else {
+                            startTime = System.currentTimeMillis()
+                            startTimeNano = SystemClock.elapsedRealtimeNanos()
+                        }
                     }
-                    udp = DatagramSocket(response["port"] as Int, InetAddress.getByName(api!!.host))
                     // start location updates
                     fusedLocationClient.requestLocationUpdates(locReq, locCall, fusedLocationClient.looper)
+                    // ui updates
+                    btnStart.hide()
+                    btnStop.show()
+                    stopwatch.base = SystemClock.elapsedRealtime()
+                    stopwatch.start()
                 },
                 { error ->
                     Log.e("hi", error.toString())
+
+                    Toast.makeText(this, "could not connect to server...", Toast.LENGTH_SHORT).show()
                 }
             )
         )
-
-        // fetch last location
-        fusedLocationClient.lastLocation.addOnSuccessListener { location : Location? ->
-            Log.d("loc", location.toString())
-            if (location != null) {
-                // transmitPacket(location)
-                findViewById<TextView>(R.id.locationAccuracyUpdate).text = location.accuracy.toString()
-            }
-        }
-
-//        fusedLocationClient.locationAvailability.addOnSuccessListener { la : LocationAvailability? ->
-//            Log.d("locA", la.toString())
-//            findViewById<TextView>(R.id.locationAvailUpdate).text = la.toString()
-//            if (la != null && la.isLocationAvailable) {
-//                Log.d("??", fusedLocationClient.lastLocation.toString())
-//            } else {
-//                fusedLocationClient.requestLocationUpdates(
-//                    LocationRequest.create(),
-//                    object : LocationCallback() {
-//                        override fun onLocationResult(locationResult: LocationResult?) {
-//                            locationResult ?: return
-//                            locationResult.locations[0].time
-//                            Log.d("uh?", locationResult.toString())
-//                        }
-//                    },
-//                    fusedLocationClient.looper)
-//            }
-//        }
-
-        btnStart.hide()
-        btnStop.show()
-        stopwatch.base = SystemClock.elapsedRealtime()
-        stopwatch.start()
     }
 
     private fun stopSession() {
         // click button to end session
         // send port and end-stream token to server API
         // obtain whatever data the server sends back
-        fusedLocationClient.removeLocationUpdates(locCall) // stop location updates
+
+        // todo -- if server shuts down, we can't stop -- this should be fixed
+
         val queue = Volley.newRequestQueue(this)
         queue.add(
             JsonObjectRequest(
                 Request.Method.POST,
-                api.toString() + "/session/stop",
-                JSONObject(mapOf("port" to udp?.port, "token" to end)),
+                api.toString() + "/session/end",
+                JSONObject(mapOf("port" to port, "token" to end)),
                 { response ->
                     Log.d("hi", response.toString())
+                    fusedLocationClient.removeLocationUpdates(locCall) // stop location updates
                     udp = null
                     key = null
+                    kar = null
                     end = null
+                    stopwatch.stop()
+                    btnStart.show()
+                    btnStop.hide()
                 },
                 { error ->
                     Log.e("hi", error.toString())
+                    Log.e("hello", String(error.networkResponse.data))
+                    Toast.makeText(this, "could not connect to server...", Toast.LENGTH_SHORT).show()
                 }
             )
         )
-        stopwatch.stop()
-        btnStart.show()
-        btnStop.hide()
     }
 
     private fun startSettings() {
@@ -232,6 +291,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        // get loc service
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         // create location request
         locReq = LocationRequest.create()
         locReq.interval = 30000
@@ -247,7 +308,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 for (location in locRes.locations) {
                     // Update UI with location data
                     findViewById<TextView>(R.id.locationAccuracyUpdate).text = location.accuracy.toString()
-                    transmitPacket(location)
+                    scope.launch { transmitPacket(location) } // ignore errors
                 }
             }
         }
@@ -262,7 +323,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     }
 
     override fun onClick(v: View?) {
-        Log.d("what?", v.toString())
+        Log.d("who clicked?", v.toString())
         if (v == null) return
         when (v.id) {
             R.id.settings -> startSettings()
@@ -271,5 +332,4 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             else -> return
         }
     }
-
 }
