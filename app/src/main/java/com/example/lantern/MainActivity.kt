@@ -2,6 +2,9 @@ package com.example.lantern
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
@@ -59,6 +62,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private lateinit var locReq: LocationRequest
     private lateinit var locCall: LocationCallback
     private lateinit var stopwatch: Chronometer
+    private lateinit var displayCodeUI: TextView
     private var startTime: Long = 0
     private var startTimeNano: Long = 0
 
@@ -69,6 +73,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private var key: String? = null
     private var kar: ByteArray? = null
     private var end: String? = null
+    private var displayCode: String? = null
 
     private val scope = CoroutineScope(Job() + Dispatchers.IO) // off Main thread pls
 
@@ -90,6 +95,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
 
     @SuppressLint("GetInstance") // our case of ECB is safe
     private fun transmitPacket(loc: Location) {
+        Log.e("???","$addr $port")
         if (udp != null) {
             Log.d("hi", loc.toString())
             val b = ByteArray(PACKET_LENGTH)
@@ -219,6 +225,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                     // save UDP address
                     udp = DatagramSocket()
                     end = response["token"] as String
+                    displayCode = response["code"] as String
                     port = response["port"] as Int
                     addr = InetAddress.getByName(api!!.host)
                     // fetch last location
@@ -237,6 +244,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                     // start location updates
                     fusedLocationClient.requestLocationUpdates(locReq, locCall, fusedLocationClient.looper)
                     // ui updates
+                    displayCodeUI.text = displayCode
                     btnStart.hide()
                     btnStop.show()
                     stopwatch.base = SystemClock.elapsedRealtime()
@@ -271,6 +279,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                     key = null
                     kar = null
                     end = null
+                    displayCode = null
+                    displayCodeUI.text = ""
                     stopwatch.stop()
                     btnStart.show()
                     btnStop.hide()
@@ -316,9 +326,11 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         btnStart = findViewById(R.id.start)
         btnStop = findViewById(R.id.stop)
         stopwatch = findViewById(R.id.stopwatch)
+        displayCodeUI = findViewById(R.id.displayCode)
         // listeners
         btnStart.setOnClickListener(this)
         btnStop.setOnClickListener(this)
+        displayCodeUI.setOnClickListener(this)
         findViewById<FloatingActionButton>(R.id.settings).setOnClickListener(this)
     }
 
@@ -329,6 +341,14 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             R.id.settings -> startSettings()
             R.id.start -> startSessionMiddleware()
             R.id.stop -> stopSession()
+            R.id.displayCode -> {
+                if (displayCode != null) {
+                    val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    val clip: ClipData = ClipData.newPlainText(displayCode, displayCode)
+                    clipboard.setPrimaryClip(clip)
+                    Toast.makeText(this, "copied code to clipboard", Toast.LENGTH_SHORT).show()
+                }
+            }
             else -> return
         }
     }
