@@ -70,10 +70,10 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private var udp: DatagramSocket? = null
     private var port: Int = 0
     private var addr: InetAddress? = null
-    private var key: String? = null
-    private var kar: ByteArray? = null
-    private var end: String? = null
-    private var displayCode: String? = null
+    private var key: String? = null // encryption key hexstring-form
+    private var kar: ByteArray? = null // encryption key bytearray-form
+    private var end: String? = null // token to end the UDP session
+    private var displayCode: String? = null // 4-char code to get session info on front-end
 
     private val scope = CoroutineScope(Job() + Dispatchers.IO) // off Main thread pls
 
@@ -219,7 +219,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
             JsonObjectRequest(
                 Request.Method.POST,
                 api.toString() + "/session/start",
-                JSONObject(mapOf("key" to key)),
+                JSONObject(mapOf("username" to sp.getString("username",""), "password" to sp.getString("password",""), "key" to key)),
                 { response ->
                     Log.d("hi", response.toString())
                     // save UDP address
@@ -270,7 +270,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         queue.add(
             JsonObjectRequest(
                 Request.Method.POST,
-                api.toString() + "/session/end",
+                api.toString() + "/session/stop",
                 JSONObject(mapOf("port" to port, "token" to end)),
                 { response ->
                     Log.d("hi", response.toString())

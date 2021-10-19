@@ -1,22 +1,5 @@
 <PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
 
-<!--    <PreferenceCategory app:title="@string/messages_header">-->
-
-<!--        <EditTextPreference-->
-<!--            app:key="signature"-->
-<!--            app:title="@string/signature_title"-->
-<!--            app:useSimpleSummaryProvider="true" />-->
-
-<!--        <ListPreference-->
-<!--            app:defaultValue="reply"-->
-<!--            app:entries="@array/reply_entries"-->
-<!--            app:entryValues="@array/reply_values"-->
-<!--            app:key="reply"-->
-<!--            app:title="@string/reply_title"-->
-<!--            app:useSimpleSummaryProvider="true" />-->
-
-<!--    </PreferenceCategory>-->
-
     <PreferenceCategory app:title="@string/setting_title_establish_api">
 
         <SwitchPreferenceCompat
@@ -28,7 +11,17 @@
             app:title="@string/setting_api_url"
             app:useSimpleSummaryProvider="true" />
 <!--        app:dependency="useHTTPS"-->
+    </PreferenceCategory>
 
+    <PreferenceCategory app:title="@string/setting_credentials">
+        <EditTextPreference
+            app:key="username"
+            app:title="@string/setting_username"
+            app:useSimpleSummaryProvider="true" />
+        <EditTextPreference
+            app:key="password"
+            app:title="@string/setting_password"
+            app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 
 </PreferenceScreen>

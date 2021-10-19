@@ -9,4 +9,7 @@
     <string name="setting_use_https">Use HTTPS (DEBUG)</string>
     <string name="setting_api_url">API URL (without protocol)</string>
     <string name="setting_title_establish_api">Configure API Connection</string>
+    <string name="setting_credentials">Credentials</string>
+    <string name="setting_username">Username</string>
+    <string name="setting_password">Password (INSECURE)</string>
 </resources>
