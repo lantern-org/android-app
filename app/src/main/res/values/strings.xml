@@ -4,6 +4,7 @@
     <string name="configure">configure app</string>
     <string name="stop_session">stop session</string>
     <string name="status_not_running">Not Running</string>
+    <string name="status_running">Running</string>
 
     <string name="setting_use_https">Use HTTPS (DEBUG)</string>
     <string name="setting_api_url">API URL (without protocol)</string>

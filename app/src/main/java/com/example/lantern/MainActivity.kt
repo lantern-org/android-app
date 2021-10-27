@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
+import android.os.AsyncTask
 import android.os.Build
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
@@ -33,6 +34,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import org.w3c.dom.Text
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -63,6 +65,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private lateinit var locCall: LocationCallback
     private lateinit var stopwatch: Chronometer
     private lateinit var displayCodeUI: TextView
+    private lateinit var displayStatus: TextView
+    private lateinit var displayLocAcc: TextView
     private var startTime: Long = 0
     private var startTimeNano: Long = 0
 
@@ -221,34 +225,44 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 api.toString() + "/session/start",
                 JSONObject(mapOf("username" to sp.getString("username",""), "password" to sp.getString("password",""), "key" to key)),
                 { response ->
-                    Log.d("hi", response.toString())
-                    // save UDP address
-                    udp = DatagramSocket()
-                    end = response["token"] as String
-                    displayCode = response["code"] as String
-                    port = response["port"] as Int
-                    addr = InetAddress.getByName(api!!.host)
-                    // fetch last location
-                    fusedLocationClient.lastLocation.addOnSuccessListener { location : Location? ->
-                        Log.d("loc", location.toString())
-                        if (location != null) {
-                            startTime = location.time
-                            startTimeNano = location.elapsedRealtimeNanos
-                            // transmitPacket(location)
-                            findViewById<TextView>(R.id.locationAccuracyUpdate).text = location.accuracy.toString()
-                        } else {
-                            startTime = System.currentTimeMillis()
-                            startTimeNano = SystemClock.elapsedRealtimeNanos()
+                    Thread { // need for InetAddress.getByName
+                        Log.d("hi", response.toString())
+                        // save UDP address
+                        udp = DatagramSocket()
+                        end = response["token"] as String
+                        displayCode = response["code"] as String
+                        port = response["port"] as Int
+                        addr = InetAddress.getByName(api!!.host)
+                        // fetch last location
+                        // TODO -- this isn't needed?
+                        fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+                            Log.d("loc", location.toString())
+                            if (location != null) {
+                                startTime = location.time
+                                startTimeNano = location.elapsedRealtimeNanos
+                                // transmitPacket(location)
+                                displayLocAcc.text = location.accuracy.toString()
+                            } else {
+                                startTime = System.currentTimeMillis()
+                                startTimeNano = SystemClock.elapsedRealtimeNanos()
+                            }
                         }
-                    }
-                    // start location updates
-                    fusedLocationClient.requestLocationUpdates(locReq, locCall, fusedLocationClient.looper)
-                    // ui updates
-                    displayCodeUI.text = displayCode
-                    btnStart.hide()
-                    btnStop.show()
-                    stopwatch.base = SystemClock.elapsedRealtime()
-                    stopwatch.start()
+                        // start location updates
+                        fusedLocationClient.requestLocationUpdates(
+                            locReq,
+                            locCall,
+                            fusedLocationClient.looper
+                        )
+                        // ui updates
+                        runOnUiThread {
+                            displayStatus.text = getString(R.string.status_running)
+                            displayCodeUI.text = displayCode
+                            btnStart.hide()
+                            btnStop.show()
+                            stopwatch.base = SystemClock.elapsedRealtime()
+                            stopwatch.start()
+                        }
+                    }.start()
                 },
                 { error ->
                     Log.e("hi", error.toString())
@@ -280,7 +294,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                     kar = null
                     end = null
                     displayCode = null
+                    displayStatus.text = getString(R.string.status_not_running)
                     displayCodeUI.text = ""
+                    displayLocAcc.text = ""
                     stopwatch.stop()
                     btnStart.show()
                     btnStop.hide()
@@ -305,9 +321,9 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         // create location request
         locReq = LocationRequest.create()
-        locReq.interval = 30000
-        locReq.fastestInterval = 10000
-        locReq.smallestDisplacement = 30F
+        locReq.interval = 1000
+        locReq.fastestInterval = 500
+        locReq.smallestDisplacement = 1F
         locReq.priority = LocationRequest.PRIORITY_HIGH_ACCURACY
         // create location callback
         locCall = object : LocationCallback() {
@@ -315,18 +331,20 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 if (locRes == null) {
                     return
                 }
-                for (location in locRes.locations) {
+                for (location in locRes.locations) { // is size ever > 1 here?
                     // Update UI with location data
-                    findViewById<TextView>(R.id.locationAccuracyUpdate).text = location.accuracy.toString()
+                    displayLocAcc.text = location.accuracy.toString()
                     scope.launch { transmitPacket(location) } // ignore errors
                 }
             }
         }
         // other UI elements
+        displayStatus = findViewById(R.id.status)
         btnStart = findViewById(R.id.start)
         btnStop = findViewById(R.id.stop)
         stopwatch = findViewById(R.id.stopwatch)
         displayCodeUI = findViewById(R.id.displayCode)
+        displayLocAcc = findViewById(R.id.locationAccuracyUpdate)
         // listeners
         btnStart.setOnClickListener(this)
         btnStop.setOnClickListener(this)
