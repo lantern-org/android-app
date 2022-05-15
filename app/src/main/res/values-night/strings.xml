@@ -1,16 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Lantern</string>
+    <string name="app_service_desc">Tracks location and sends updates to Lantern server</string>
     <string name="start_session">start session</string>
     <string name="configure">configure app</string>
     <string name="stop_session">stop session</string>
-    <string name="status_not_running">Not Running</string>
-    <string name="status_running">Running</string>
+    <string name="status_not_running">Not Recording</string>
+    <string name="status_running">Recording</string>
+
+    <string name="notification_title">Lantern Location Service</string>
+    <string name="notification_message">While this notification is active, your location is being tracked.</string>
+    <string name="ticker_text">ticker text</string>
 
     <string name="setting_use_https">Use HTTPS (DEBUG)</string>
     <string name="setting_api_url">API URL (without protocol)</string>
+    <string name="setting_copy_code_format">Copy Code Format (URL; "%s" = code)</string>
     <string name="setting_title_establish_api">Configure API Connection</string>
     <string name="setting_credentials">Credentials</string>
     <string name="setting_username">Username</string>
     <string name="setting_password">Password (INSECURE)</string>
+    <string name="setting_gps">GPS</string>
+    <string name="setting_gps_location_interval">Location Interval (ms)</string>
+    <string name="setting_packet_duplication">Packet Duplication Factor</string>
 </resources>

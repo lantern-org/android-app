@@ -1,4 +1,5 @@
-<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:android="http://schemas.android.com/apk/res/android">
 
     <PreferenceCategory app:title="@string/setting_title_establish_api">
 
@@ -11,6 +12,10 @@
             app:title="@string/setting_api_url"
             app:useSimpleSummaryProvider="true" />
 <!--        app:dependency="useHTTPS"-->
+        <EditTextPreference
+            app:key="copyCodeFormat"
+            app:title="@string/setting_copy_code_format"
+            app:useSimpleSummaryProvider="true" />
     </PreferenceCategory>
 
     <PreferenceCategory app:title="@string/setting_credentials">
@@ -22,6 +27,37 @@
             app:key="password"
             app:title="@string/setting_password"
             app:useSimpleSummaryProvider="true" />
+    </PreferenceCategory>
+
+    <!-- TODO add a data estimator
+    let people choose the GPS sampling rate
+        - warn when it's really high that battery will drop and data will be eaten
+        - provide estimated data usage
+    math
+        - packet = N bytes
+        - GPS = 1/R sample/seconds (1 sample = 1 packet)
+        - time = T seconds (total recording time)
+    then data sent = N * T / R bytes
+
+    example: 48 bytes every 100 milliseconds for 2 hours
+    = 48 * 7200 / 0.1 = 3456000 bytes ~ 3.3 MB
+    if you pay for 1 GB / month, then you've used about 0.3% of your monthly allowance
+    -->
+    <PreferenceCategory app:title="@string/setting_gps">
+        <SeekBarPreference
+            app:key="gpsInterval"
+            app:title="@string/setting_gps_location_interval"
+            app:defaultValue="500"
+            app:min="250"
+            android:max="5000"
+            app:showSeekBarValue="true" />
+        <SeekBarPreference
+            app:key="packetDuplicationFactor"
+            app:title="@string/setting_packet_duplication"
+            app:defaultValue="1"
+            app:min="1"
+            android:max="10"
+            app:showSeekBarValue="true" />
     </PreferenceCategory>
 
 </PreferenceScreen>

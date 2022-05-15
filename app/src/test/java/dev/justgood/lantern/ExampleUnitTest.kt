@@ -1,4 +1,4 @@
-package com.example.lantern
+package dev.justgood.lantern
 
 import org.junit.Test
 
@@ -13,5 +13,13 @@ class ExampleUnitTest {
     @Test
     fun addition_isCorrect() {
         assertEquals(4, 2 + 2)
+    }
+
+    @Test
+    fun packet_v1() {
+        /* todo
+            refactor LocationTracker.transmitPacket() to pull out packet construction
+            into separate function. then unit-test that function
+        */
     }
 }
