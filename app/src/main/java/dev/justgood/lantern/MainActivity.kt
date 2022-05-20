@@ -26,6 +26,7 @@ import org.json.JSONObject
 import java.net.InetAddress
 import java.security.SecureRandom
 
+private const val FILE_DATASTORE: String = "data.json"
 
 class MainActivity : AppCompatActivity(), View.OnClickListener {
 
@@ -42,6 +43,8 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
     private var port: Int = 0
     private var end: String? = null // token to end the UDP session
     private var displayCode: String? = null // 4-char code to get session info on front-end
+    private var start: Long = 0
+    private var running: Boolean = false
 
     private lateinit var sp: SharedPreferences
 
@@ -142,20 +145,20 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                             intent.putExtra("kar", b)
                             startForegroundService(intent)
                         }
-                        // ui updates
-                        runOnUiThread {
-                            displayStatus.text = getString(R.string.status_running)
-                            displayCodeUI.text = displayCode
-                            btnStart.hide()
-                            btnStop.show()
-                            stopwatch.base = SystemClock.elapsedRealtime()
-                            stopwatch.start()
+                        start = SystemClock.elapsedRealtime()
+                        openFileOutput(FILE_DATASTORE, Context.MODE_PRIVATE).use { fos ->
+                            fos.write(JSONObject(mapOf(
+                                "code" to displayCode,
+                                "token" to end,
+                                "port" to port,
+                                "start" to start.toString(),
+                            )).toString().toByteArray())
                         }
+                        indicateRunning()
                     }.start()
                 },
                 { error ->
                     Log.e("hi", error.toString())
-
                     Toast.makeText(this, "could not connect to server...", Toast.LENGTH_SHORT).show()
                 }
             ).setRetryPolicy(
@@ -204,6 +207,10 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                     Intent(this, LocationTracker::class.java).also { intent ->
                         stopService(intent)
                     }
+                    openFileOutput(FILE_DATASTORE, Context.MODE_PRIVATE).use { fos ->
+                        fos.write(ByteArray(0))
+                    }
+                    running = false
                 },
                 { error ->
                     Log.e("hi", error.toString())
@@ -246,6 +253,23 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
 
     override fun onResume() {
         super.onResume()
+        // test if we're recording
+        if (LocationTracker.running && !running) {
+            // re-set state
+            openFileInput(FILE_DATASTORE).use { fis ->
+                val res = JSONObject(fis.bufferedReader().readText())
+                displayCode = res["code"] as String?
+                end = res["token"] as String?
+                port = res["port"] as Int
+                start = (res["start"] as String).toLong()
+                //
+                api = java.net.URL(
+                    (if (sp.getBoolean("useHTTPS",true)) "https" else "http") + "://" + sp.getString("apiURL", "localhost:420")
+                )
+            }
+            indicateRunning()
+        }
+        //
         val p = sp.getInt("packetDuplicationFactor", 1)
         val g = sp.getInt("gpsInterval", 500)
         // (LocationTracker.PacketInfo.PACKET_LENGTH / 1024f / 1024f) * p / g * 1000 * 60 * 60
@@ -268,6 +292,19 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 }
             }
             else -> return
+        }
+    }
+
+    private fun indicateRunning() {
+        running = true
+        // ui updates
+        runOnUiThread {
+            displayStatus.text = getString(R.string.status_running)
+            displayCodeUI.text = displayCode
+            btnStart.hide()
+            btnStop.show()
+            stopwatch.base = start
+            stopwatch.start()
         }
     }
 }

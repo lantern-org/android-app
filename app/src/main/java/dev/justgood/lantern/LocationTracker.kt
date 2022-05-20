@@ -56,6 +56,9 @@ class LocationTracker: Service() {
         const val TRANSMIT_LENGTH = UDP_HEADER_LENGTH + PACKET_LENGTH
         // ...
     }
+    companion object Meta {
+        var running: Boolean = false
+    }
 
     private var udp: DatagramSocket? = null
     private var port: Int = 0
@@ -204,6 +207,7 @@ class LocationTracker: Service() {
             // for ActivityCompat#requestPermissions for more details.
             return START_NOT_STICKY // don't restart, get permissions instead
         }
+        Toast.makeText(this, "service starting", Toast.LENGTH_SHORT).show()
 
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -246,7 +250,8 @@ class LocationTracker: Service() {
             fusedLocationClient.looper
         )
 
-        Toast.makeText(this, "service starting", Toast.LENGTH_SHORT).show()
+        running = true
+
         // If we get killed, after returning from here, restart
         return START_STICKY
     }
@@ -259,6 +264,7 @@ class LocationTracker: Service() {
     override fun onDestroy() {
         // TODO cancel `scope` ?
         stopForeground(true)
+        running = false
         fusedLocationClient.removeLocationUpdates(locCall) // stop location updates
         Toast.makeText(this, "service done", Toast.LENGTH_SHORT).show()
     }
