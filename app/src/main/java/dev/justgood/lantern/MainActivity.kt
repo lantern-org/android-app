@@ -176,10 +176,7 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
         // send port and end-stream token to server API
         // obtain whatever data the server sends back
 
-        // todo -- if server shuts down, we can't stop -- this should be fixed
-        // we want to assume the server is 100% uptime and will always respond
-        // but if it doesn't respond to our http request, we need to handle that
-        //
+        // in any case of error response, we stop recording
 
         val queue = Volley.newRequestQueue(this)
         queue.add(
@@ -194,31 +191,32 @@ class MainActivity : AppCompatActivity(), View.OnClickListener {
                 ),
                 { response ->
                     Log.d("hi", response.toString())
-                    // TODO stop location tracking service
-                    key = null
-                    end = null
-                    displayCode = null
-                    displayStatus.text = getString(R.string.status_not_running)
-                    displayCodeUI.text = ""
-                    displayLocAcc.text = ""
-                    stopwatch.stop()
-                    btnStart.show()
-                    btnStop.hide()
-                    Intent(this, LocationTracker::class.java).also { intent ->
-                        stopService(intent)
-                    }
-                    openFileOutput(FILE_DATASTORE, Context.MODE_PRIVATE).use { fos ->
-                        fos.write(ByteArray(0))
-                    }
-                    running = false
                 },
                 { error ->
                     Log.e("hi", error.toString())
-                    Log.e("hello", String(error.networkResponse.data))
-                    Toast.makeText(this, "could not connect to server...", Toast.LENGTH_SHORT).show()
+//                    Log.e("hello", String(error.networkResponse.data))
+//                    Toast.makeText(this, "could not connect to server...", Toast.LENGTH_SHORT).show()
                 }
             )
-        )
+        ) // fire-and-forget
+        // stop regardless of server response
+        // if server doesn't get it, it'll be cleaned up on paused->stop cycle
+        key = null
+        end = null
+        displayCode = null
+        displayStatus.text = getString(R.string.status_not_running)
+        displayCodeUI.text = ""
+        displayLocAcc.text = ""
+        stopwatch.stop()
+        btnStart.show()
+        btnStop.hide()
+        Intent(this, LocationTracker::class.java).also { intent ->
+            stopService(intent)
+        }
+        openFileOutput(FILE_DATASTORE, Context.MODE_PRIVATE).use { fos ->
+            fos.write(ByteArray(0))
+        }
+        running = false
     }
 
     private fun startSettings() {
